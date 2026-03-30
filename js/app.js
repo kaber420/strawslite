@@ -190,50 +190,8 @@ document.addEventListener('DOMContentLoaded', () => {
     closeModal();
   });
 
-  // --- Logs Handling ---
+  // --- Logs Handling moved to monitor.js ---
   
-  chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.type === 'LOG_ENTRY') {
-      const { timestamp, url, ruleId, method } = msg.log;
-      const rule = state.rules[ruleId];
-      const urlObj = new URL(url);
-      const host = `${urlObj.hostname}${urlObj.pathname}`;
-      
-      const time = new Date(timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' });
-      addLogHTML(`
-        <span class="time">[${time}]</span>
-        <span class="method">${escapeHtml(method)}</span>
-        <span class="url">${escapeHtml(host)}</span>
-        <span style="color:var(--text-secondary)"> ➔ </span>
-        <span style="color:var(--accent-primary)">${escapeHtml(rule ? rule.destination : 'Intercepted')}</span>
-      `, 'hit');
-    }
-  });
-
-  function addLog(text, type = 'info') {
-    const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' });
-    addLogHTML(`
-      <span class="time">[${time}]</span>
-      <span>${escapeHtml(text)}</span>
-    `, type);
-  }
-
-  function addLogHTML(html, type) {
-    const el = document.createElement('div');
-    el.className = `log ${type}`;
-    el.innerHTML = html;
-    terminalContent.appendChild(el);
-    
-    // Auto scroll to bottom
-    const terminalWindow = document.getElementById('terminal-output');
-    terminalWindow.scrollTop = terminalWindow.scrollHeight;
-    
-    // Limits
-    while(terminalContent.children.length > 100) {
-      terminalContent.removeChild(terminalContent.firstChild);
-    }
-  }
-
   clearLogsBtn.addEventListener('click', () => {
     terminalContent.innerHTML = '';
   });
@@ -302,9 +260,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load state
   loadState();
-
-  // Warn user if real-time logs won't work (only available in developer mode)
-  if (!chrome.declarativeNetRequest.onRuleMatchedDebug) {
-    addLog('ℹ️ Real-time logs require loading the extension in Developer Mode (chrome://extensions).', 'warn');
-  }
 });

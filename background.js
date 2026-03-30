@@ -124,16 +124,94 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // Try syncing on start
 syncRules();
 
-if (chrome.declarativeNetRequest.onRuleMatchedDebug) {
-  chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
-    chrome.runtime.sendMessage({
-      type: 'LOG_ENTRY',
-      log: {
-        timestamp: Date.now(),
-        url: info.request.url,
-        ruleId: info.rule.ruleId,
-        method: info.request.method
-      }
-    }).catch(() => { /* Ignore: side panel might be closed */ });
-  });
+// --- NETWORK MONITOR (Observational) ---
+
+const activeRequests = new Map();
+
+// Helper to send logs to UI
+function sendLog(log) {
+  chrome.runtime.sendMessage({
+    type: 'LOG_ENTRY',
+    log: {
+      timestamp: new Date().toLocaleTimeString(),
+      ...log
+    }
+  }).catch(() => { /* Side panel closed */ });
 }
+
+chrome.webRequest.onBeforeRequest.addListener(
+  (details) => {
+    activeRequests.set(details.requestId, {
+      startTime: Date.now(),
+      url: details.url,
+      method: details.method,
+      type: details.type
+    });
+  },
+  { urls: ["<all_urls>"] }
+);
+
+chrome.webRequest.onResponseStarted.addListener(
+  (details) => {
+    const req = activeRequests.get(details.requestId);
+    if (req) {
+      req.status = details.statusCode;
+      req.ip = details.ip || '-';
+      req.fromCache = details.fromCache;
+      
+      // Get content-type from headers
+      const ctHeader = details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-type');
+      req.contentType = ctHeader ? ctHeader.value.split(';')[0] : 'unknown';
+    }
+  },
+  { urls: ["<all_urls>"] },
+  ["responseHeaders"]
+);
+
+chrome.webRequest.onCompleted.addListener(
+  (details) => {
+    const req = activeRequests.get(details.requestId);
+    if (req) {
+      const latency = Date.now() - req.startTime;
+      
+      // Get content-length for size
+      const sizeHeader = details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-length');
+      const size = sizeHeader ? `${(parseInt(sizeHeader.value) / 1024).toFixed(2)} KB` : '-';
+
+      sendLog({
+        url: req.url,
+        method: req.method,
+        status: details.statusCode,
+        ip: details.ip || '-',
+        latency: `${latency}ms`,
+        from: details.fromCache ? 'Cache' : (req.url.includes('127.0.0.1') || req.url.includes('localhost') ? 'Straw' : 'Direct'),
+        type: req.contentType || 'unknown',
+        size: size
+      });
+      activeRequests.delete(details.requestId);
+    }
+  },
+  { urls: ["<all_urls>"] },
+  ["responseHeaders"]
+);
+
+chrome.webRequest.onErrorOccurred.addListener(
+  (details) => {
+    const req = activeRequests.get(details.requestId);
+    if (req) {
+      sendLog({
+        url: req.url,
+        method: req.method,
+        status: 'Error',
+        ip: '-',
+        latency: `${Date.now() - req.startTime}ms`,
+        from: 'Network',
+        type: details.error,
+        size: '-'
+      });
+      activeRequests.delete(details.requestId);
+    }
+  },
+  { urls: ["<all_urls>"] }
+);
+

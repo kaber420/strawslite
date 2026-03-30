@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Straws Light</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="header glass">
+      <div class="header-left">
+        <h1 class="logo">🥤 Straws <span>Light</span></h1>
+      </div>
+      <div class="header-right">
+        <label class="switch tooltip" data-tooltip="Master Switch">
+          <input type="checkbox" id="master-switch" checked>
+          <span class="slider round"></span>
+        </label>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <button id="add-rule-btn" class="btn primary">Add Straw</button>
+      <div class="toolbar-actions">
+        <button id="import-btn" class="btn secondary">Import</button>
+        <button id="export-btn" class="btn secondary">Export</button>
+        <input type="file" id="import-file" accept=".json" style="display: none;">
+      </div>
+    </div>
+
+    <section class="rules-section">
+      <h2 class="section-title">Active Rules</h2>
+      <div id="rules-list" class="rules-list empty">
+         <!-- Rules will be injected here -->
+      </div>
+    </section>
+
+    <section class="terminal-section">
+      <div class="terminal-header">
+        <span>Real-time Logs</span>
+        <button id="clear-logs-btn" class="btn-icon">🗑️</button>
+      </div>
+      <div class="terminal-window" id="terminal-output">
+        <div class="terminal-content">
+          <span class="log info">System initialized. Waiting for traffic...</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Add/Edit Modal -->
+    <div id="rule-modal" class="modal hidden">
+      <div class="modal-content glass">
+        <h3 id="modal-title">Add Rule</h3>
+        <form id="rule-form">
+          <input type="hidden" id="rule-id">
+          <div class="form-group">
+            <label for="rule-source">Source Domain</label>
+            <input type="text" id="rule-source" placeholder="e.g. myapi.dev" required>
+          </div>
+          <div class="form-group">
+            <label for="rule-dest">Destination</label>
+            <input type="text" id="rule-dest" placeholder="e.g. localhost:3000" required>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn secondary" id="cancel-rule-btn">Cancel</button>
+            <button type="submit" class="btn primary">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

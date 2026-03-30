@@ -2,6 +2,7 @@ import browser from "webextension-polyfill";
 document.addEventListener('DOMContentLoaded', () => {
     const terminalOutput = document.getElementById('terminal-output');
     const clearBtn = document.getElementById('clear-logs-btn');
+    const toggleLogBtn = document.getElementById('toggle-livelog-btn');
     const MAX_LOGS = 100;
 
     const logOverlay = document.getElementById('log-overlay');
@@ -112,5 +113,52 @@ ${log.error ? `<div class="detail-row"><span class="label">Error:</span>${log.er
         const content = terminalOutput.querySelector('.terminal-content') || terminalOutput;
         content.innerHTML = '<span class="log info">Logs cleared.</span>';
         logOverlay.classList.remove('active');
+    });
+
+    function updateToggleBtn(isActive) {
+        if (!toggleLogBtn) return;
+        if (isActive) {
+            toggleLogBtn.innerHTML = '<span style="color:#e11d48; font-weight: bold;">⏹ Stop Logging</span>';
+            toggleLogBtn.style.borderColor = '#e11d48';
+        } else {
+            toggleLogBtn.innerHTML = '▶ Start (5m)';
+            toggleLogBtn.style.borderColor = 'var(--border-light)';
+        }
+        const content = terminalOutput.querySelector('.terminal-content') || terminalOutput;
+        if (content.children.length === 0 || (content.children.length === 1 && content.querySelector('.info'))) {
+             content.innerHTML = isActive ? '<span class="log info">Live Log started. Listening for 5 minutes...</span>' : '<span class="log info">System initialized. Live Log is OFF.</span>';
+        }
+    }
+
+    browser.storage.local.get('isLiveLogActive').then(data => {
+        updateToggleBtn(!!data.isLiveLogActive);
+    });
+
+    browser.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes.isLiveLogActive !== undefined) {
+            updateToggleBtn(!!changes.isLiveLogActive.newValue);
+            if (!changes.isLiveLogActive.newValue) {
+                const content = terminalOutput.querySelector('.terminal-content') || terminalOutput;
+                const msg = document.createElement('div');
+                msg.innerHTML = '<span class="log info" style="color:#e11d48;">Live Log stopped (timer or manual).</span>';
+                content.appendChild(msg);
+                terminalOutput.scrollTop = terminalOutput.scrollHeight;
+            }
+        }
+    });
+
+    toggleLogBtn?.addEventListener('click', async () => {
+        const data = await browser.storage.local.get('isLiveLogActive');
+        const isActive = !!data.isLiveLogActive;
+        
+        if (!isActive) {
+            await browser.storage.local.set({ isLiveLogActive: true });
+            if (browser.alarms) browser.alarms.create('liveLogOff', { delayInMinutes: 5 });
+            const content = terminalOutput.querySelector('.terminal-content') || terminalOutput;
+            content.innerHTML = '<span class="log info">Live Log started. Listening for 5 minutes...</span>';
+        } else {
+            await browser.storage.local.set({ isLiveLogActive: false });
+            if (browser.alarms) browser.alarms.clear('liveLogOff');
+        }
     });
 });

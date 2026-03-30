@@ -109,7 +109,8 @@ async function syncRules() {
 
 let bgState = {
   rules: {},
-  masterSwitch: true
+  masterSwitch: true,
+  isLiveLogActive: false
 };
 
 async function updateProxySettings(rulesObj, masterSwitch) {
@@ -235,14 +236,33 @@ async function runSync() {
 }
 
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.rules || changes.masterSwitch)) {
-    clearTimeout(syncTimeout);
-    syncTimeout = setTimeout(runSync, 150);
+  if (area === 'local') {
+    if (changes.rules || changes.masterSwitch) {
+      clearTimeout(syncTimeout);
+      syncTimeout = setTimeout(runSync, 150);
+    }
+    if (changes.isLiveLogActive !== undefined) {
+      bgState.isLiveLogActive = !!changes.isLiveLogActive.newValue;
+    }
   }
 });
 
 // Try syncing on start
 syncRules();
+
+// Init Live Log state
+browser.storage.local.get('isLiveLogActive').then(data => {
+  bgState.isLiveLogActive = !!data.isLiveLogActive;
+});
+
+// Alarms (auto-off Live Log)
+if (typeof browser.alarms !== 'undefined') {
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'liveLogOff') {
+      browser.storage.local.set({ isLiveLogActive: false });
+    }
+  });
+}
 
 // --- NETWORK MONITOR (Observational) ---
 
@@ -261,6 +281,7 @@ function sendLog(log) {
 
 browser.webRequest.onBeforeRequest.addListener(
   (details) => {
+    if (!bgState.isLiveLogActive) return;
     activeRequests.set(details.requestId, {
       startTime: Date.now(),
       url: details.url,
@@ -273,6 +294,7 @@ browser.webRequest.onBeforeRequest.addListener(
 
 browser.webRequest.onResponseStarted.addListener(
   (details) => {
+    if (!bgState.isLiveLogActive) return;
     const req = activeRequests.get(details.requestId);
     if (req) {
       req.status = details.statusCode;
@@ -290,6 +312,7 @@ browser.webRequest.onResponseStarted.addListener(
 
 browser.webRequest.onCompleted.addListener(
   (details) => {
+    if (!bgState.isLiveLogActive) return;
     const req = activeRequests.get(details.requestId);
     if (req) {
       const latency = Date.now() - req.startTime;
@@ -332,6 +355,7 @@ browser.webRequest.onCompleted.addListener(
 
 browser.webRequest.onErrorOccurred.addListener(
   (details) => {
+    if (!bgState.isLiveLogActive) return;
     const req = activeRequests.get(details.requestId);
     if (req) {
       sendLog({

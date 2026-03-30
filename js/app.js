@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   async function loadState() {
     const data = await chrome.storage.local.get(['rules', 'masterSwitch']);
-    state.rules = data.rules || [];
+    state.rules = data.rules || {};
     state.masterSwitch = (data.masterSwitch !== false); // Default to true
     
     masterSwitch.checked = state.masterSwitch;
@@ -45,7 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Rendering ---
   
   function renderRules() {
-    if (state.rules.length === 0) {
+    const ruleIds = Object.keys(state.rules);
+    if (ruleIds.length === 0) {
       rulesList.innerHTML = '';
       rulesList.classList.add('empty');
       return;
@@ -54,7 +55,8 @@ document.addEventListener('DOMContentLoaded', () => {
     rulesList.classList.remove('empty');
     rulesList.innerHTML = '';
     
-    state.rules.forEach(rule => {
+    ruleIds.forEach(id => {
+      const rule = state.rules[id];
       const el = document.createElement('div');
       el.className = `rule-card ${rule.active && state.masterSwitch ? '' : 'inactive'}`;
       
@@ -99,7 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function toggleRule(id, active) {
-    const rule = state.rules.find(r => r.id === id);
+    const rule = state.rules[id];
     if (rule) {
       rule.active = active;
       saveState().then(renderRules);
@@ -107,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function deleteRule(id) {
-    state.rules = state.rules.filter(r => r.id !== id);
+    delete state.rules[id];
     saveState().then(renderRules);
   }
 
@@ -120,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ruleForm.reset();
     if (id) {
       modalTitle.textContent = 'Edit Straw';
-      const rule = state.rules.find(r => r.id === id);
+      const rule = state.rules[id];
       if (rule) {
         ruleIdInput.value = rule.id;
         ruleSourceInput.value = rule.source;
@@ -158,7 +160,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check for duplicate source
     const existingId = id ? parseInt(id) : null;
-    const duplicate = state.rules.find(r => r.source === source && r.id !== existingId);
+    const ruleIds = Object.keys(state.rules);
+    const duplicate = ruleIds.find(rid => state.rules[rid].source === source && state.rules[rid].id !== existingId);
     if (duplicate) {
       addLog(`Duplicate source: "${source}" already exists.`, 'warn');
       return;
@@ -166,20 +169,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (id) {
       // Edit
-      const rule = state.rules.find(r => r.id === parseInt(id));
-      if (rule) {
-        rule.source = source;
-        rule.destination = dest;
+      const rid = parseInt(id);
+      if (state.rules[rid]) {
+        state.rules[rid].source = source;
+        state.rules[rid].destination = dest;
       }
     } else {
       // Add new
-      const nextId = state.rules.reduce((max, r) => Math.max(max, r.id), 0) + 1;
-      state.rules.push({
+      const nextId = Object.keys(state.rules).reduce((max, ridd) => Math.max(max, parseInt(ridd)), 0) + 1;
+      state.rules[nextId] = {
         id: nextId,
         source: source,
         destination: dest,
         active: true
-      });
+      };
     }
 
     await saveState();
@@ -192,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === 'LOG_ENTRY') {
       const { timestamp, url, ruleId, method } = msg.log;
-      const rule = state.rules.find(r => r.id === ruleId);
+      const rule = state.rules[ruleId];
       const urlObj = new URL(url);
       const host = `${urlObj.hostname}${urlObj.pathname}`;
       
@@ -261,12 +264,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const imported = JSON.parse(evt.target.result);
         if (Array.isArray(imported)) {
           // Merge or Override? Let's Override for simplicity, but adjust IDs
-          state.rules = imported.map((r, i) => ({
-            id: i + 1,
-            source: r.source || '',
-            destination: r.destination || '',
-            active: r.active !== false
-          })).filter(r => r.source && r.destination);
+          state.rules = {};
+          imported.forEach((r, i) => {
+            if (r.source && r.destination) {
+              const id = i + 1;
+              state.rules[id] = {
+                id: id,
+                source: r.source,
+                destination: r.destination,
+                active: r.active !== false
+              };
+            }
+          });
           
           await saveState();
           renderRules();

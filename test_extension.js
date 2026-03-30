@@ -1,6 +1,7 @@
+const path = require('path');
 const puppeteer = require('puppeteer');
 (async () => {
-  const extPath = '/home/kaber420/Documentos/proyectos/strawslite';
+  const extPath = path.resolve(__dirname);
   const browser = await puppeteer.launch({
     headless: "new",
     args: [

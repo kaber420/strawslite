@@ -1,15 +1,14 @@
 {
   "name": "strawslite",
   "version": "1.0.0",
-  "main": "background.js",
+  "description": "Herramienta de redirección web ultraligera y segura, sin dependencias externas.",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test_extension.js"
   },
-  "keywords": [],
+  "keywords": ["chrome-extension", "redirect", "proxy"],
   "author": "",
   "license": "ISC",
-  "description": "",
-  "dependencies": {
+  "devDependencies": {
     "puppeteer": "^24.40.0"
   }
 }

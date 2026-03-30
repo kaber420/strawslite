@@ -18,27 +18,25 @@ async function syncRules() {
         let safeSource = rule.source.replace(/^https?:\/\//, '').replace(/\/?$/, '');
         
         let host = 'localhost';
-        let port = '80'; // default port if none is found
-        
-        // Strip out protocols (http://, https://, or http:)
-        let cleanDest = rule.destination.replace(/^(https?:)?\/\/?/i, '').replace(/^https?:/i, '');
+        let port = '';
+
+        // Strip protocol and trailing slashes cleanly
+        const cleanDest = rule.destination.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
 
         if (cleanDest.includes(':')) {
-           const parts = cleanDest.split(':');
-           host = parts[0];
-           port = parts[1];
+          const parts = cleanDest.split(':');
+          host = parts[0] || 'localhost';
+          port = parts[1].replace(/\D/g, '');
         } else if (/^\d+$/.test(cleanDest)) {
-           // It's just a port number like "3000"
-           host = 'localhost';
-           port = cleanDest;
+          // It's just a port number like "3000"
+          host = 'localhost';
+          port = cleanDest;
         } else {
-           // It's just a host like "example.local"
-           host = cleanDest;
-           port = ''; // empty string means keep original port or default
+          // It's just a hostname like "example.local"
+          host = cleanDest;
         }
 
         host = host.replace(/^\/+|\/+$/g, '');
-        port = port.replace(/\D/g, '');
 
         newRules.push({
           id: parseInt(rule.id, 10),
@@ -73,9 +71,12 @@ async function syncRules() {
   }
 }
 
+// Debounce to avoid race conditions when multiple rules change rapidly
+let syncTimeout = null;
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes.rules || changes.masterSwitch)) {
-    syncRules();
+    clearTimeout(syncTimeout);
+    syncTimeout = setTimeout(syncRules, 150);
   }
 });
 

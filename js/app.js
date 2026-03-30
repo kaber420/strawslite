@@ -145,9 +145,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const id = ruleIdInput.value;
 
     source = source.replace(/^https?:\/\//, '').replace(/\/?$/, '');
-    dest = dest.replace(/^(https?:)?\/\/?/i, '').replace(/^https?:/i, '').replace(/\/+$/, '');
+    dest = dest.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
 
     if (!source || !dest) return;
+
+    // Validate that source looks like a valid hostname
+    const isValidDomain = /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/.test(source);
+    if (!isValidDomain) {
+      addLog('Invalid source domain. Use a format like: myapi.dev or api.local', 'warn');
+      return;
+    }
+
+    // Check for duplicate source
+    const existingId = id ? parseInt(id) : null;
+    const duplicate = state.rules.find(r => r.source === source && r.id !== existingId);
+    if (duplicate) {
+      addLog(`Duplicate source: "${source}" already exists.`, 'warn');
+      return;
+    }
 
     if (id) {
       // Edit
@@ -184,10 +199,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const time = new Date(timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' });
       addLogHTML(`
         <span class="time">[${time}]</span>
-        <span class="method">${method}</span>
+        <span class="method">${escapeHtml(method)}</span>
         <span class="url">${escapeHtml(host)}</span>
         <span style="color:var(--text-secondary)"> ➔ </span>
-        <span style="color:var(--accent-primary)">${rule ? rule.destination : 'Intercepted'}</span>
+        <span style="color:var(--accent-primary)">${escapeHtml(rule ? rule.destination : 'Intercepted')}</span>
       `, 'hit');
     }
   });
@@ -278,4 +293,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load state
   loadState();
+
+  // Warn user if real-time logs won't work (only available in developer mode)
+  if (!chrome.declarativeNetRequest.onRuleMatchedDebug) {
+    addLog('ℹ️ Real-time logs require loading the extension in Developer Mode (chrome://extensions).', 'warn');
+  }
 });

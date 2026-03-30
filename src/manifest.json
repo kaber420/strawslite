@@ -8,7 +8,8 @@
     "declarativeNetRequestFeedback",
     "storage",
     "sidePanel",
-    "webRequest"
+    "webRequest",
+    "proxy"
   ],
   "host_permissions": [
     "<all_urls>"

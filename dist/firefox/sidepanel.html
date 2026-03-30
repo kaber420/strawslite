@@ -77,6 +77,31 @@
             <label for="rule-dest">Destination</label>
             <input type="text" id="rule-dest" placeholder="e.g. localhost:3000" required>
           </div>
+          <div class="form-group">
+            <label>Mode</label>
+            <div class="mode-selector">
+              <label class="mode-option">
+                <input type="radio" name="rule-type" value="redirect" checked>
+                <div class="mode-card">
+                  <span class="mode-icon">🔄</span>
+                  <div class="mode-details">
+                    <span class="mode-name">Redirect</span>
+                    <span class="mode-desc">Changes the URL</span>
+                  </div>
+                </div>
+              </label>
+              <label class="mode-option">
+                <input type="radio" name="rule-type" value="proxy" id="radio-proxy">
+                <div class="mode-card">
+                  <span class="mode-icon">🛡️</span>
+                  <div class="mode-details">
+                    <span class="mode-name">Proxy</span>
+                    <span class="mode-desc">Masks the URL</span>
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
           <div class="modal-actions">
             <button type="button" class="btn secondary" id="cancel-rule-btn">Cancel</button>
             <button type="submit" class="btn primary">Save</button>

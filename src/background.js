@@ -55,8 +55,10 @@ async function syncRules() {
   const addRules = [];
   const removeRuleIds = [];
 
-  // Rules that should be active
-  const activeRulesInStorage = Object.values(rulesObj).filter(r => r.active && r.source && r.destination && masterSwitch);
+  // Rules that should be active for DNR (Redirect mode)
+  const activeRulesInStorage = Object.values(rulesObj).filter(r => 
+    r.active && r.source && r.destination && masterSwitch && (r.type === 'redirect' || !r.type)
+  );
   const activeRuleIdsInStorage = new Set(activeRulesInStorage.map(r => parseInt(r.id, 10)));
 
   // Determine what to remove: 
@@ -93,12 +95,126 @@ async function syncRules() {
         removeRuleIds,
         addRules
       });
-      console.log(`Sync complete. Added: ${addRules.length}, Removed: ${removeRuleIds.length}`);
+      console.log(`DNR Sync complete. Added: ${addRules.length}, Removed: ${removeRuleIds.length}`);
     } catch (e) {
-      console.error("Error updating rules:", e);
+      console.error("Error updating DNR rules:", e);
     }
   }
+
+  // Update Proxy Settings (Phase 3)
+  await updateProxySettings(rulesObj, masterSwitch);
 }
+
+// --- PROXY IMPLEMENTATION ---
+
+let bgState = {
+  rules: {},
+  masterSwitch: true
+};
+
+async function updateProxySettings(rulesObj, masterSwitch) {
+  bgState.rules = rulesObj;
+  bgState.masterSwitch = masterSwitch;
+
+  const proxyRules = Object.values(rulesObj).filter(r => 
+    r.active && r.source && r.destination && masterSwitch && r.type === 'proxy'
+  );
+
+  const isFirefox = typeof browser.proxy.onRequest !== 'undefined';
+
+  if (proxyRules.length === 0 || !masterSwitch) {
+    if (isFirefox) {
+      if (browser.proxy.onRequest.hasListener(handleFirefoxProxy)) {
+        browser.proxy.onRequest.removeListener(handleFirefoxProxy);
+      }
+    } else if (typeof chrome !== 'undefined' && chrome.proxy) {
+      chrome.proxy.settings.clear({ scope: 'regular' });
+    }
+    return;
+  }
+
+  if (isFirefox) {
+    // Firefox uses a listener
+    if (!browser.proxy.onRequest.hasListener(handleFirefoxProxy)) {
+      browser.proxy.onRequest.addListener(handleFirefoxProxy, { urls: ["<all_urls>"] });
+    }
+  } else if (typeof chrome !== 'undefined' && chrome.proxy) {
+    // Chrome uses a PAC script
+    const pacScript = generatePACScript(proxyRules);
+    chrome.proxy.settings.set({
+      value: {
+        mode: "pac_script",
+        pacScript: { data: pacScript }
+      },
+      scope: 'regular'
+    }, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Chrome Proxy Error:", chrome.runtime.lastError);
+      }
+    });
+  }
+}
+
+function generatePACScript(rules) {
+  const cases = rules.map(rule => {
+    let host = '127.0.0.1';
+    let port = '80';
+    const cleanDest = rule.destination.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    
+    if (cleanDest.includes(':')) {
+      const parts = cleanDest.split(':');
+      host = parts[0] || '127.0.0.1';
+      port = parts[1].replace(/\D/g, '');
+    } else if (/^\d+$/.test(cleanDest)) {
+      port = cleanDest;
+    } else {
+      host = cleanDest;
+    }
+
+    return `if (shExpMatch(host, "${rule.source}")) return "PROXY ${host}:${port}";`;
+  }).join('\n    ');
+
+  return `
+    function FindProxyForURL(url, host) {
+      ${cases}
+      return "DIRECT";
+    }
+  `;
+}
+
+// Firefox listener optimized with background cache
+function handleFirefoxProxy(requestInfo) {
+  if (!bgState.masterSwitch) return { type: "direct" };
+
+  const rules = Object.values(bgState.rules).filter(r => 
+    r.active && r.type === 'proxy'
+  );
+
+  const url = new URL(requestInfo.url);
+  const matchingRule = rules.find(r => url.hostname === r.source || url.hostname.endsWith('.' + r.source));
+
+  if (matchingRule) {
+    let host = '127.0.0.1';
+    let port = 80;
+    const cleanDest = matchingRule.destination.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+
+    if (cleanDest.includes(':')) {
+      const parts = cleanDest.split(':');
+      host = parts[0] || '127.0.0.1';
+      port = parseInt(parts[1].replace(/\D/g, ''), 10);
+    } else if (/^\d+$/.test(cleanDest)) {
+      port = parseInt(cleanDest, 10);
+    } else {
+      host = cleanDest;
+    }
+
+    return { type: "http", host, port };
+  }
+
+  return { type: "direct" };
+}
+
+
 
 // Robust Debounce
 let syncTimeout = null;
@@ -182,13 +298,28 @@ browser.webRequest.onCompleted.addListener(
       const sizeHeader = details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-length');
       const size = sizeHeader ? `${(parseInt(sizeHeader.value) / 1024).toFixed(2)} KB` : '-';
 
+      // Identify source of the request for logs
+      let from = 'Direct';
+      if (details.fromCache) {
+        from = 'Cache';
+      } else {
+        const urlObj = new URL(req.url);
+        const isStrawDNR = req.url.includes('127.0.0.1') || req.url.includes('localhost');
+        const isStrawProxy = Object.values(bgState.rules).some(r => 
+          r.active && r.type === 'proxy' && (urlObj.hostname === r.source || urlObj.hostname.endsWith('.' + r.source))
+        );
+        
+        if (isStrawDNR) from = 'Straw (Redir)';
+        else if (isStrawProxy) from = 'Straw (Proxy)';
+      }
+
       sendLog({
         url: req.url,
         method: req.method,
         status: details.statusCode,
         ip: details.ip || '-',
         latency: `${latency}ms`,
-        from: details.fromCache ? 'Cache' : (req.url.includes('127.0.0.1') || req.url.includes('localhost') ? 'Straw' : 'Direct'),
+        from: from,
         type: req.contentType || 'unknown',
         size: size
       });

@@ -1,17 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Straws Light</title>
+  <title>Straws Lite</title>
   <script type="module" crossorigin src="/sidepanel.js"></script>
   <link rel="stylesheet" crossorigin href="/sidepanel.css">
 </head>
+
 <body>
   <div class="app-container">
     <header class="header glass">
       <div class="header-left">
-        <h1 class="logo">🥤 Straws <span>Light</span></h1>
+        <h1 class="logo">🥤 Straws <span>Lite</span></h1>
       </div>
       <div class="header-right">
         <label class="switch tooltip" data-tooltip="Master Switch">
@@ -33,7 +35,7 @@
     <section class="rules-section">
       <h2 class="section-title">Active Rules</h2>
       <div id="rules-list" class="rules-list empty">
-         <!-- Rules will be injected here -->
+        <!-- Rules will be injected here -->
       </div>
     </section>
 
@@ -75,6 +77,31 @@
             <label for="rule-dest">Destination</label>
             <input type="text" id="rule-dest" placeholder="e.g. localhost:3000" required>
           </div>
+          <div class="form-group">
+            <label>Mode</label>
+            <div class="mode-selector">
+              <label class="mode-option">
+                <input type="radio" name="rule-type" value="redirect" checked>
+                <div class="mode-card">
+                  <span class="mode-icon">🔄</span>
+                  <div class="mode-details">
+                    <span class="mode-name">Redirect</span>
+                    <span class="mode-desc">Changes the URL</span>
+                  </div>
+                </div>
+              </label>
+              <label class="mode-option">
+                <input type="radio" name="rule-type" value="proxy" id="radio-proxy">
+                <div class="mode-card">
+                  <span class="mode-icon">🛡️</span>
+                  <div class="mode-details">
+                    <span class="mode-name">Proxy</span>
+                    <span class="mode-desc">Masks the URL</span>
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
           <div class="modal-actions">
             <button type="button" class="btn secondary" id="cancel-rule-btn">Cancel</button>
             <button type="submit" class="btn primary">Save</button>
@@ -85,4 +112,5 @@
   </div>
 
 </body>
+
 </html>

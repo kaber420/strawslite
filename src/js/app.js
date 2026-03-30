@@ -32,6 +32,16 @@ document.addEventListener('DOMContentLoaded', () => {
     state.rules = data.rules || {};
     state.masterSwitch = (data.masterSwitch !== false); // Default to true
     
+    // Migration: Ensure all rules have a type
+    let migrated = false;
+    Object.keys(state.rules).forEach(id => {
+      if (!state.rules[id].type) {
+        state.rules[id].type = 'redirect';
+        migrated = true;
+      }
+    });
+    if (migrated) await saveState();
+
     masterSwitch.checked = state.masterSwitch;
     renderRules();
   }
@@ -63,7 +73,10 @@ document.addEventListener('DOMContentLoaded', () => {
       
       el.innerHTML = `
         <div class="rule-info">
-          <div class="rule-source" title="${escapeHtml(rule.source)}">${escapeHtml(rule.source)}</div>
+          <div class="rule-source" title="${escapeHtml(rule.source)}">
+            ${escapeHtml(rule.source)}
+            <span class="rule-type-badge badge-${rule.type || 'redirect'}">${rule.type || 'redirect'}</span>
+          </div>
           <div class="rule-dest">${escapeHtml(rule.destination)}</div>
         </div>
         <div class="rule-actions">
@@ -128,10 +141,15 @@ document.addEventListener('DOMContentLoaded', () => {
         ruleIdInput.value = rule.id;
         ruleSourceInput.value = rule.source;
         ruleDestInput.value = rule.destination;
+        const type = rule.type || 'redirect';
+        const radio = ruleForm.querySelector(`input[name="rule-type"][value="${type}"]`);
+        if (radio) radio.checked = true;
       }
     } else {
       modalTitle.textContent = 'Add Straw';
       ruleIdInput.value = '';
+      const redirectRadio = ruleForm.querySelector('input[name="rule-type"][value="redirect"]');
+      if (redirectRadio) redirectRadio.checked = true;
     }
     modal.classList.remove('hidden');
     ruleSourceInput.focus();
@@ -168,12 +186,15 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const type = ruleForm.querySelector('input[name="rule-type"]:checked').value;
+
     if (id) {
       // Edit
       const rid = parseInt(id);
       if (state.rules[rid]) {
         state.rules[rid].source = source;
         state.rules[rid].destination = dest;
+        state.rules[rid].type = type;
       }
     } else {
       // Add new
@@ -182,6 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
         id: nextId,
         source: source,
         destination: dest,
+        type: type,
         active: true
       };
     }
@@ -231,6 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 id: id,
                 source: r.source,
                 destination: r.destination,
+                type: r.type || 'redirect',
                 active: r.active !== false
               };
             }

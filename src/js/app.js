@@ -1,4 +1,5 @@
 // js/app.js
+import browser from "webextension-polyfill";
 
 document.addEventListener('DOMContentLoaded', () => {
   const rulesList = document.getElementById('rules-list');
@@ -27,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Init & Load ---
   
   async function loadState() {
-    const data = await chrome.storage.local.get(['rules', 'masterSwitch']);
+    const data = await browser.storage.local.get(['rules', 'masterSwitch']);
     state.rules = data.rules || {};
     state.masterSwitch = (data.masterSwitch !== false); // Default to true
     
@@ -36,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function saveState() {
-    await chrome.storage.local.set({
+    await browser.storage.local.set({
       rules: state.rules,
       masterSwitch: state.masterSwitch
     });

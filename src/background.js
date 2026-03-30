@@ -1,13 +1,17 @@
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+import browser from "webextension-polyfill";
+
+browser.runtime.onInstalled.addListener(() => {
+  if (browser.sidePanel && browser.sidePanel.setPanelBehavior) {
+    browser.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  }
 });
 
 async function syncRules() {
-  const data = await chrome.storage.local.get(['rules', 'masterSwitch']);
+  const data = await browser.storage.local.get(['rules', 'masterSwitch']);
   const rulesObj = data.rules || {};
   const masterSwitch = data.masterSwitch !== false;
 
-  const currentRules = await chrome.declarativeNetRequest.getDynamicRules();
+  const currentRules = await browser.declarativeNetRequest.getDynamicRules();
   const currentRuleIds = new Set(currentRules.map(r => r.id));
 
   const rulesToNodes = (rule) => {
@@ -85,7 +89,7 @@ async function syncRules() {
 
   if (addRules.length > 0 || removeRuleIds.length > 0) {
     try {
-      await chrome.declarativeNetRequest.updateDynamicRules({
+      await browser.declarativeNetRequest.updateDynamicRules({
         removeRuleIds,
         addRules
       });
@@ -114,7 +118,7 @@ async function runSync() {
   isSyncing = false;
 }
 
-chrome.storage.onChanged.addListener((changes, area) => {
+browser.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes.rules || changes.masterSwitch)) {
     clearTimeout(syncTimeout);
     syncTimeout = setTimeout(runSync, 150);
@@ -130,7 +134,7 @@ const activeRequests = new Map();
 
 // Helper to send logs to UI
 function sendLog(log) {
-  chrome.runtime.sendMessage({
+  browser.runtime.sendMessage({
     type: 'LOG_ENTRY',
     log: {
       timestamp: new Date().toLocaleTimeString(),
@@ -139,7 +143,7 @@ function sendLog(log) {
   }).catch(() => { /* Side panel closed */ });
 }
 
-chrome.webRequest.onBeforeRequest.addListener(
+browser.webRequest.onBeforeRequest.addListener(
   (details) => {
     activeRequests.set(details.requestId, {
       startTime: Date.now(),
@@ -151,7 +155,7 @@ chrome.webRequest.onBeforeRequest.addListener(
   { urls: ["<all_urls>"] }
 );
 
-chrome.webRequest.onResponseStarted.addListener(
+browser.webRequest.onResponseStarted.addListener(
   (details) => {
     const req = activeRequests.get(details.requestId);
     if (req) {
@@ -168,7 +172,7 @@ chrome.webRequest.onResponseStarted.addListener(
   ["responseHeaders"]
 );
 
-chrome.webRequest.onCompleted.addListener(
+browser.webRequest.onCompleted.addListener(
   (details) => {
     const req = activeRequests.get(details.requestId);
     if (req) {
@@ -195,7 +199,7 @@ chrome.webRequest.onCompleted.addListener(
   ["responseHeaders"]
 );
 
-chrome.webRequest.onErrorOccurred.addListener(
+browser.webRequest.onErrorOccurred.addListener(
   (details) => {
     const req = activeRequests.get(details.requestId);
     if (req) {

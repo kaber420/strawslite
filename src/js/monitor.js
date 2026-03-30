@@ -1,3 +1,4 @@
+import browser from "webextension-polyfill";
 document.addEventListener('DOMContentLoaded', () => {
     const terminalOutput = document.getElementById('terminal-output');
     const clearBtn = document.getElementById('clear-logs-btn');
@@ -84,7 +85,7 @@ ${log.error ? `<div class="detail-row"><span class="label">Error:</span>${log.er
         }
     });
 
-    chrome.runtime.onMessage.addListener((message) => {
+    browser.runtime.onMessage.addListener((message) => {
         if (message.type === 'LOG_ENTRY') {
             const content = terminalOutput.querySelector('.terminal-content') || terminalOutput;
             

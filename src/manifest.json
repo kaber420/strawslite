@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Straws Light",
+  "name": "Straws Lite",
   "version": "1.0",
   "description": "Herramienta de redirección web ultraligera y segura, sin dependencias externas.",
   "permissions": [
@@ -20,7 +20,7 @@
     "default_path": "sidepanel.html"
   },
   "action": {
-    "default_title": "Open Straws Light"
+    "default_title": "Open Straws Lite"
   },
   "icons": {
     "16": "icons/icon-16.png",

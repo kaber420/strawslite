@@ -17,6 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const ruleIdInput = document.getElementById('rule-id');
   const ruleSourceInput = document.getElementById('rule-source');
   const ruleDestInput = document.getElementById('rule-dest');
+  const ruleCertSelect = document.getElementById('rule-cert');
+  const engineOptions = document.getElementById('engine-options');
   
   const terminalContent = document.querySelector('.terminal-content');
 
@@ -75,7 +77,9 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="rule-info">
           <div class="rule-source" title="${escapeHtml(rule.source)}">
             ${escapeHtml(rule.source)}
-            <span class="rule-type-badge badge-${rule.type || 'redirect'}">${rule.type || 'redirect'}</span>
+            <span class="rule-type-badge badge-${rule.type === 'engine' ? 'engine' : (rule.type === 'proxy' ? 'proxy' : 'redirect')}">
+              ${rule.type === 'engine' ? 'Straws Engine' : (rule.type === 'proxy' ? 'Standard Proxy' : 'DNR Redirect')}
+            </span>
           </div>
           <div class="rule-dest">${escapeHtml(rule.destination)}</div>
         </div>
@@ -145,14 +149,54 @@ document.addEventListener('DOMContentLoaded', () => {
         const radio = ruleForm.querySelector(`input[name="rule-type"][value="${type}"]`);
         if (radio) radio.checked = true;
       }
-    } else {
       modalTitle.textContent = 'Add Straw';
       ruleIdInput.value = '';
       const redirectRadio = ruleForm.querySelector('input[name="rule-type"][value="redirect"]');
       if (redirectRadio) redirectRadio.checked = true;
     }
+
+    const type = ruleForm.querySelector('input[name="rule-type"]:checked').value;
+    if (type === 'engine') {
+      engineOptions.classList.remove('hidden');
+      fetchAvailableCerts();
+    } else {
+      engineOptions.classList.add('hidden');
+    }
+    
     modal.classList.remove('hidden');
     ruleSourceInput.focus();
+  }
+
+  // Handle mode selection change
+  ruleForm.querySelectorAll('input[name="rule-type"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      if (e.target.value === 'engine') {
+        engineOptions.classList.remove('hidden');
+        fetchAvailableCerts();
+      } else {
+        engineOptions.classList.add('hidden');
+      }
+    });
+  });
+
+  async function fetchAvailableCerts() {
+    try {
+      const response = await browser.runtime.sendMessage({ type: 'GET_CERTS' });
+      if (response && response.certs) {
+        // Keep the first default option
+        const currentVal = ruleCertSelect.value;
+        ruleCertSelect.innerHTML = '<option value="">Auto-select (by hostname)</option>';
+        response.certs.forEach(cert => {
+          const opt = document.createElement('option');
+          opt.value = cert;
+          opt.textContent = cert;
+          ruleCertSelect.appendChild(opt);
+        });
+        ruleCertSelect.value = currentVal;
+      }
+    } catch (e) {
+      console.error("Error fetching certs:", e);
+    }
   }
 
   function closeModal() {
@@ -195,6 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.rules[rid].source = source;
         state.rules[rid].destination = dest;
         state.rules[rid].type = type;
+        state.rules[rid].cert = type === 'engine' ? ruleCertSelect.value : '';
       }
     } else {
       // Add new
@@ -204,6 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
         source: source,
         destination: dest,
         type: type,
+        cert: type === 'engine' ? ruleCertSelect.value : '',
         active: true
       };
     }

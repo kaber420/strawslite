@@ -23,6 +23,11 @@ function generateManifest() {
       delete manifest.background.service_worker;
     }
     manifest.permissions = manifest.permissions.filter(p => p !== "sidePanel");
+    manifest.browser_specific_settings = {
+      gecko: {
+        id: "strawslite@kaber420.com"
+      }
+    };
   }
 
   return manifest;

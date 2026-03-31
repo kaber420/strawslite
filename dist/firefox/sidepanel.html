@@ -88,22 +88,39 @@
                 <div class="mode-card">
                   <span class="mode-icon">🔄</span>
                   <div class="mode-details">
-                    <span class="mode-name">Redirect</span>
-                    <span class="mode-desc">Changes the URL</span>
+                    <span class="mode-name">DNR Redirect</span>
+                    <span class="mode-desc">Cambia la URL (visible)</span>
                   </div>
                 </div>
               </label>
               <label class="mode-option">
-                <input type="radio" name="rule-type" value="proxy" id="radio-proxy">
+                <input type="radio" name="rule-type" value="proxy">
                 <div class="mode-card">
-                  <span class="mode-icon">🛡️</span>
+                  <span class="mode-icon">🌐</span>
                   <div class="mode-details">
-                    <span class="mode-name">Proxy</span>
-                    <span class="mode-desc">Masks the URL</span>
+                    <span class="mode-name">Standard Proxy</span>
+                    <span class="mode-desc">Proxy nativo</span>
+                  </div>
+                </div>
+              </label>
+              <label class="mode-option">
+                <input type="radio" name="rule-type" value="engine">
+                <div class="mode-card">
+                  <span class="mode-icon">🚀</span>
+                  <div class="mode-details">
+                    <span class="mode-name">Straws Engine</span>
+                    <span class="mode-desc">Usa el motor Go</span>
                   </div>
                 </div>
               </label>
             </div>
+          </div>
+          <div id="engine-options" class="form-group hidden">
+            <label for="rule-cert">Certificate (Legal Domain)</label>
+            <select id="rule-cert">
+              <option value="">Auto-select (by hostname)</option>
+            </select>
+            <span class="help-text">Drop .crt/.key in the /certs folder of the engine</span>
           </div>
           <div class="modal-actions">
             <button type="button" class="btn secondary" id="cancel-rule-btn">Cancel</button>

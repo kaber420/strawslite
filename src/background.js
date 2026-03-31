@@ -110,15 +110,32 @@ async function syncRules() {
 let bgState = {
   rules: {},
   masterSwitch: true,
-  isLiveLogActive: false
+  isLiveLogActive: false,
+  nativePort: null
 };
+
+function getNativePort() {
+  if (bgState.nativePort) return bgState.nativePort;
+  
+  try {
+    bgState.nativePort = browser.runtime.connectNative("com.kaber420.straws.core");
+    bgState.nativePort.onDisconnect.addListener((p) => {
+      console.log("Native port disconnected:", p.error);
+      bgState.nativePort = null;
+    });
+    return bgState.nativePort;
+  } catch (e) {
+    console.error("Failed to connect to native host:", e);
+    return null;
+  }
+}
 
 async function updateProxySettings(rulesObj, masterSwitch) {
   bgState.rules = rulesObj;
   bgState.masterSwitch = masterSwitch;
 
   const proxyRules = Object.values(rulesObj).filter(r => 
-    r.active && r.source && r.destination && masterSwitch && r.type === 'proxy'
+    r.active && r.source && r.destination && masterSwitch && (r.type === 'proxy' || r.type === 'engine')
   );
 
   const isFirefox = typeof browser.proxy.onRequest !== 'undefined';
@@ -188,7 +205,7 @@ function handleFirefoxProxy(requestInfo) {
   if (!bgState.masterSwitch) return { type: "direct" };
 
   const rules = Object.values(bgState.rules).filter(r => 
-    r.active && r.type === 'proxy'
+    r.active && (r.type === 'proxy' || r.type === 'engine')
   );
 
   const url = new URL(requestInfo.url);
@@ -207,6 +224,10 @@ function handleFirefoxProxy(requestInfo) {
       port = parseInt(cleanDest, 10);
     } else {
       host = cleanDest;
+    }
+
+    if (matchingRule.type === 'engine') {
+      return { type: "http", host: "127.0.0.1", port: 5782 };
     }
 
     return { type: "http", host, port };
@@ -234,6 +255,26 @@ async function runSync() {
   } while (needsSyncAgain);
   isSyncing = false;
 }
+
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'GET_CERTS') {
+    const port = getNativePort();
+    if (!port) {
+      sendResponse({ certs: [] });
+      return true;
+    }
+
+    const listener = (res) => {
+      if (res.type === 'certs_list') {
+        port.onMessage.removeListener(listener);
+        sendResponse({ certs: res.certs });
+      }
+    };
+    port.onMessage.addListener(listener);
+    port.postMessage({ command: "get_certs" });
+    return true; // async response
+  }
+});
 
 browser.storage.onChanged.addListener((changes, area) => {
   if (area === 'local') {

@@ -16,9 +16,16 @@ import (
 const hostName = "com.kaber420.straws.core"
 
 func main() {
+	exePath, _ := os.Executable()
+	exeDir := filepath.Dir(exePath)
+	
+	f, _ := os.OpenFile(filepath.Join(exeDir, "straws_native.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	log.SetOutput(f)
+	log.Println("Straws Engine Main started")
+	
 	registerFlag := flag.Bool("register", false, "Register the host in the browser's native messaging manifests")
 	portFlag := flag.String("port", "5782", "Port for the proxy server to listen on")
-	certsDirFlag := flag.String("certs-dir", "certs", "Directory containing .crt and .key files for legal domains")
+	certsDirFlag := flag.String("certs-dir", filepath.Join(exeDir, "certs"), "Directory containing .crt and .key files for legal domains")
 	flag.Parse()
 
 	if *registerFlag {
@@ -92,7 +99,14 @@ func run(port, certsDir string) {
 
 	go func() {
 		log.Printf("Proxy server starting on %s...", p.Addr)
+		nativeproto.WriteMessage(os.Stdout, []byte(`{"type": "ready", "message": "Straws Engine is ready"}`))
+
 		if err := p.Start(); err != nil {
+			errJSON, _ := json.Marshal(map[string]interface{}{
+				"type":    "error",
+				"message": "Engine Error: " + err.Error(),
+			})
+			nativeproto.WriteMessage(os.Stdout, errJSON)
 			log.Fatalf("Proxy server error: %v", err)
 		}
 	}()

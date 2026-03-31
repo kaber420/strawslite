@@ -28,3 +28,10 @@ Thumbs.db
 .drafts/
 
 respaldo strawslite
+*.crt
+*.key
+*.pem
+*.csr
+*.srl
+*.ext
+*.log

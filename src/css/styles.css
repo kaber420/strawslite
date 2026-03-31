@@ -69,12 +69,39 @@ body {
   text-shadow: 0 0 10px var(--accent-glow);
 }
 
+/* Header Toggles */
+.header-toggles {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.switch-container {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+}
+
+.switch-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 /* Toggle Switch */
 .switch {
   position: relative;
   display: inline-block;
   width: 44px;
   height: 24px;
+}
+
+.switch.mini {
+  width: 36px;
+  height: 20px;
 }
 
 .switch input {
@@ -109,9 +136,20 @@ input:checked + .slider {
   border-color: var(--success);
 }
 
+.switch.mini .slider:before {
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  bottom: 2px;
+}
+
 input:checked + .slider:before {
   transform: translateX(20px);
   background-color: white;
+}
+
+.switch.mini input:checked + .slider:before {
+  transform: translateX(16px);
 }
 
 .slider.round {
@@ -647,6 +685,24 @@ input:checked + .slider:before {
   background: rgba(139, 92, 246, 0.15);
   color: #8b5cf6;
   border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.cert-status {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.cert-status.found {
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.cert-status.missing {
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.1);
 }
 
 

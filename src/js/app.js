@@ -4,6 +4,7 @@ import browser from "webextension-polyfill";
 document.addEventListener('DOMContentLoaded', () => {
   const rulesList = document.getElementById('rules-list');
   const masterSwitch = document.getElementById('master-switch');
+  const engineSwitch = document.getElementById('engine-switch');
   const addBtn = document.getElementById('add-rule-btn');
   const importBtn = document.getElementById('import-btn');
   const exportBtn = document.getElementById('export-btn');
@@ -19,20 +20,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const ruleDestInput = document.getElementById('rule-dest');
   const ruleCertSelect = document.getElementById('rule-cert');
   const engineOptions = document.getElementById('engine-options');
+  const certStatusBadge = document.getElementById('cert-status-badge');
   
   const terminalContent = document.querySelector('.terminal-content');
 
   let state = {
-    rules: [],
-    masterSwitch: true
+    rules: {},
+    masterSwitch: true,
+    isEngineActive: false,
+    availableCerts: []
   };
 
   // --- Init & Load ---
   
   async function loadState() {
-    const data = await browser.storage.local.get(['rules', 'masterSwitch']);
+    const data = await browser.storage.local.get(['rules', 'masterSwitch', 'isEngineActive']);
     state.rules = data.rules || {};
     state.masterSwitch = (data.masterSwitch !== false); // Default to true
+    state.isEngineActive = !!data.isEngineActive;
     
     // Migration: Ensure all rules have a type
     let migrated = false;
@@ -45,13 +50,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (migrated) await saveState();
 
     masterSwitch.checked = state.masterSwitch;
+    engineSwitch.checked = state.isEngineActive;
     renderRules();
   }
 
   async function saveState() {
     await browser.storage.local.set({
       rules: state.rules,
-      masterSwitch: state.masterSwitch
+      masterSwitch: state.masterSwitch,
+      isEngineActive: state.isEngineActive
     });
   }
 
@@ -118,6 +125,12 @@ document.addEventListener('DOMContentLoaded', () => {
     addLog(`System ${state.masterSwitch ? 'Activated' : 'Paused'}.`, 'warn');
   });
 
+  engineSwitch.addEventListener('change', async (e) => {
+    state.isEngineActive = e.target.checked;
+    await saveState();
+    addLog(`Straws Engine ${state.isEngineActive ? 'Starting...' : 'Stopping...'}`, state.isEngineActive ? 'success' : 'warn');
+  });
+
   function toggleRule(id, active) {
     const rule = state.rules[id];
     if (rule) {
@@ -136,26 +149,41 @@ document.addEventListener('DOMContentLoaded', () => {
   addBtn.addEventListener('click', () => openModal());
   cancelRuleBtn.addEventListener('click', closeModal);
 
-  function openModal(id = null) {
+  async function openModal(rule = null) {
     ruleForm.reset();
-    if (id) {
+    ruleIdInput.value = '';
+    modalTitle.textContent = 'Add New Straw';
+    certStatusBadge.classList.add('hidden');
+    
+    // Set default mode
+    const redirectRadio = document.getElementById('type-redirect');
+    if (redirectRadio) redirectRadio.checked = true;
+    toggleRuleType('redirect');
+
+    if (rule) {
       modalTitle.textContent = 'Edit Straw';
-      const rule = state.rules[id];
-      if (rule) {
-        ruleIdInput.value = rule.id;
-        ruleSourceInput.value = rule.source;
-        ruleDestInput.value = rule.destination;
-        const type = rule.type || 'redirect';
-        const radio = ruleForm.querySelector(`input[name="rule-type"][value="${type}"]`);
-        if (radio) radio.checked = true;
+      ruleIdInput.value = rule.id || '';
+      ruleSourceInput.value = rule.source || '';
+      ruleDestInput.value = rule.destination || '';
+      
+      const typeRadio = document.querySelector(`input[name="rule-type"][value="${rule.type}"]`);
+      if (typeRadio) {
+        typeRadio.checked = true;
+        toggleRuleType(rule.type);
       }
-      modalTitle.textContent = 'Add Straw';
-      ruleIdInput.value = '';
-      const redirectRadio = ruleForm.querySelector('input[name="rule-type"][value="redirect"]');
-      if (redirectRadio) redirectRadio.checked = true;
+      
+      if (rule.type === 'engine' && rule.certificate) {
+        ruleCertSelect.value = rule.certificate;
+      }
     }
 
-    const type = ruleForm.querySelector('input[name="rule-type"]:checked').value;
+    await fetchAvailableCerts();
+    updateCertStatus();
+    modal.classList.remove('hidden');
+    setTimeout(() => ruleSourceInput.focus(), 50);
+  }
+
+  function toggleRuleType(type) {
     if (type === 'engine') {
       engineOptions.classList.remove('hidden');
       fetchAvailableCerts();
@@ -181,23 +209,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function fetchAvailableCerts() {
     try {
+      console.log("Fetching available certs...");
       const response = await browser.runtime.sendMessage({ type: 'GET_CERTS' });
+      console.log("Certs response:", response);
       if (response && response.certs) {
-        // Keep the first default option
-        const currentVal = ruleCertSelect.value;
-        ruleCertSelect.innerHTML = '<option value="">Auto-select (by hostname)</option>';
+        state.availableCerts = response.certs;
+        ruleCertSelect.innerHTML = '<option value="">Auto (SNI)</option>';
         response.certs.forEach(cert => {
-          const opt = document.createElement('option');
-          opt.value = cert;
-          opt.textContent = cert;
-          ruleCertSelect.appendChild(opt);
+          const option = document.createElement('option');
+          option.value = cert;
+          option.textContent = cert;
+          ruleCertSelect.appendChild(option);
         });
-        ruleCertSelect.value = currentVal;
       }
     } catch (e) {
-      console.error("Error fetching certs:", e);
+      console.error("Failed to fetch certs:", e);
     }
   }
+
+  function updateCertStatus() {
+    const domain = ruleSourceInput.value.trim();
+    const type = document.querySelector('input[name="rule-type"]:checked').value;
+    
+    if (type !== 'engine' || !domain) {
+      certStatusBadge.classList.add('hidden');
+      return;
+    }
+
+    certStatusBadge.classList.remove('hidden');
+    const match = state.availableCerts.includes(domain);
+    
+    if (match) {
+      certStatusBadge.textContent = 'Cert Found';
+      certStatusBadge.className = 'cert-status found';
+    } else {
+      certStatusBadge.textContent = 'Cert Missing';
+      certStatusBadge.className = 'cert-status missing';
+    }
+  }
+
+  ruleSourceInput.addEventListener('input', updateCertStatus);
+  document.querySelectorAll('input[name="rule-type"]').forEach(input => {
+    input.addEventListener('change', updateCertStatus);
+  });
 
   function closeModal() {
     modal.classList.add('hidden');

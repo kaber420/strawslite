@@ -25,7 +25,8 @@ function generateManifest() {
     manifest.permissions = manifest.permissions.filter(p => p !== "sidePanel");
     manifest.browser_specific_settings = {
       gecko: {
-        id: "strawslite@kaber420.com"
+        id: "strawslite@kaber420.com",
+        strict_min_version: "113.0"
       }
     };
   }

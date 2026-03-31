@@ -8,7 +8,9 @@
     "dev:firefox": "VITE_BROWSER=firefox vite",
     "build:chrome": "VITE_BROWSER=chrome vite build",
     "build:firefox": "VITE_BROWSER=firefox vite build",
-    "test": "node test_extension.js"
+    "test": "node tests/firefox-e2e.test.cjs",
+    "test:firefox": "node tests/firefox-e2e.test.cjs",
+    "test:chrome": "node tests/chrome-e2e.test.js"
   },
   "keywords": [
     "chrome-extension",

@@ -110,18 +110,43 @@ async function syncRules() {
 let bgState = {
   rules: {},
   masterSwitch: true,
+  isEngineActive: false,
   isLiveLogActive: false,
   nativePort: null
 };
 
 function getNativePort() {
+  if (!bgState.isEngineActive) {
+    if (bgState.nativePort) {
+      bgState.nativePort.disconnect();
+      bgState.nativePort = null;
+    }
+    return null;
+  }
+  
   if (bgState.nativePort) return bgState.nativePort;
   
   try {
+    console.log("Connecting to Straws Engine...");
     bgState.nativePort = browser.runtime.connectNative("com.kaber420.straws.core");
     bgState.nativePort.onDisconnect.addListener((p) => {
       console.log("Native port disconnected:", p.error);
       bgState.nativePort = null;
+    });
+
+    bgState.nativePort.onMessage.addListener((msg) => {
+      if (msg.type === "log" || msg.type === "tls_match" || msg.type === "tls_error") {
+        sendLog({
+          url: msg.host || msg.message || msg.error,
+          method: msg.type === "tls_match" ? "MATCH" : (msg.type === "tls_error" ? "SSL-FAIL" : "LOG"),
+          status: msg.success === false ? "Error" : "Info",
+          ip: "-",
+          latency: "-",
+          from: msg.type === "log" ? "Engine" : "Native",
+          type: msg.type,
+          size: "-"
+        });
+      }
     });
     return bgState.nativePort;
   } catch (e) {
@@ -278,7 +303,11 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 browser.storage.onChanged.addListener((changes, area) => {
   if (area === 'local') {
-    if (changes.rules || changes.masterSwitch) {
+    if (changes.rules || changes.masterSwitch || changes.isEngineActive) {
+      if (changes.isEngineActive) {
+        bgState.isEngineActive = !!changes.isEngineActive.newValue;
+        getNativePort(); // Trigger connect/disconnect
+      }
       clearTimeout(syncTimeout);
       syncTimeout = setTimeout(runSync, 150);
     }
@@ -291,9 +320,11 @@ browser.storage.onChanged.addListener((changes, area) => {
 // Try syncing on start
 syncRules();
 
-// Init Live Log state
-browser.storage.local.get('isLiveLogActive').then(data => {
+// Init state from storage
+browser.storage.local.get(['isLiveLogActive', 'isEngineActive']).then(data => {
   bgState.isLiveLogActive = !!data.isLiveLogActive;
+  bgState.isEngineActive = !!data.isEngineActive;
+  if (bgState.isEngineActive) getNativePort();
 });
 
 // Alarms (auto-off Live Log)

@@ -3,6 +3,12 @@
   "name": "Straws Lite",
   "version": "1.0",
   "description": "Herramienta de redirección web ultraligera y segura, sin dependencias externas.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "strawslite@kaber420.com",
+      "strict_min_version": "113.0"
+    }
+  },
   "permissions": [
     "declarativeNetRequest",
     "declarativeNetRequestFeedback",
@@ -10,7 +16,8 @@
     "sidePanel",
     "webRequest",
     "proxy",
-    "alarms"
+    "alarms",
+    "nativeMessaging"
   ],
   "host_permissions": [
     "<all_urls>"

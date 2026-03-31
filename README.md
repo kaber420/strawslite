@@ -1,37 +1,44 @@
-# Straws Light
+# 🥤 StrawsLite: Diagnóstico de Red Local de Alto Rendimiento (v1.0)
 
-**Straws Light** es una extensión de navegador ultraligera y segura diseñada para la redirección de tráfico web. A diferencia de otras soluciones que dependen de aplicaciones nativas o scripts externos (como Python), Straws Light funciona íntegramente dentro del navegador, ofreciendo una experiencia nativa, segura y fácil de usar.
+**StrawsLite** es una extensión de navegador profesional diseñada para la **redirección, intercepción y observabilidad** de tráfico web. Está optimizada para el flujo de trabajo individual del desarrollador, permitiendo un control total del tráfico local sin tocar la configuración de red del sistema.
+
+## 🚀 Innovación: Motor Local vía Native Messaging
+
+StrawsLite utiliza un **Motor Go** local que se comunica con el navegador mediante **Native Messaging**, ofreciendo una latencia casi nula y una potencia de procesamiento inalcanzable para extensiones convencionales:
+
+- **Sin Interferencia de Red**: No toca `etc/hosts`, Pi-hole o Proxies del sistema. Las reglas se aplican quirúrgicamente dentro de TU navegador.
+- **Privacidad Total**: Todo el procesamiento ocurre en tu máquina. El tráfico nunca sale de tu entorno local hacia servicios de terceros.
+- **Despacho Inteligente**: Combina **DNR (Declarative Net Request)** y **PAC (Proxy Auto-Configuration)** dinámico para una gestión de tráfico transparente y ultra-rápida.
 
 ## Características Principales
 
-*   **Redirección Nativa:** Utiliza la API `declarativeNetRequest` de Chrome para interceptar y redirigir peticiones de red de forma eficiente y silenciosa.
-*   **Sin Dependencias Externas:** No requiere la instalación de aplicaciones *host* nativas, procesos en segundo plano del sistema operativo ni intérpretes de Python. Todo el trabajo se realiza dentro del entorno aislado (*sandbox*) de la extensión.
-*   **Gestión Integrada (Side Panel):** Cuenta con una interfaz de usuario integrada directamente en el panel lateral (Side Panel) del navegador, permitiendo una administración rápida y accesible de las reglas de redirección.
-*   **Almacenamiento Local:** Las configuraciones y reglas se guardan de forma segura utilizando `chrome.storage.local`, garantizando que el usuario tenga control total sobre sus datos de enrutamiento.
-*   **Interruptor Maestro (Master Switch):** Permite activar o desactivar rápidamente todas las redirecciones con un solo clic.
+*   **Redirección de Grado Profesional:** Intercepta y redirige peticiones de forma eficiente y silenciosa.
+*   **Live Dashboard:** Interfaz integrada para visualizar qué está pasando con tus peticiones en tiempo real.
+*   **Sirenas Visuales (Experimental):** Posibilidad de marcar pestañas con errores o latencia mediante bordes visuales.
+*   **Arquitectura de Motor Propio**: Escala tus capacidades de diagnóstico conectando la extensión a un binario externo para análisis avanzado.
 
-## Arquitectura
+## El Ecosistema Straws (Lite vs Pro)
 
-El proyecto está construido puramente con tecnologías web estándar (HTML, CSS y JavaScript) y las APIs nativas de extensiones de Chrome (Service Workers, Declarative Net Request, Storage, y Side Panel). 
+Straws está diseñado de forma modular para crecer con tus necesidades.
 
-*   `manifest.json`: Archivo de configuración que define los permisos necesarios (como `declarativeNetRequest`, `storage`, y `sidePanel`).
-*   `background.js` (Service Worker): Se encarga de manejar la lógica de redirección, escuchar los cambios en el estado de las reglas y gestionar el ciclo de vida de la extensión.
-*   `sidepanel.html` / `js/`: Interfaz de usuario donde se visualizan, añaden y eliminan las reglas de enrutamiento web (por ejemplo, mapear dominios hacia `127.0.0.1:8100`).
+- **StrawsLite**: La versión gratuita y de código abierto para desarrolladores. Foco 100% en el **entorno local y diagnóstico personal**.
+- **StrawsPro**: La solución de grado empresarial para **equipos de desarrollo**. Permite la colaboración en reglas de red, observabilidad compartida y escalamiento de configuraciones en toda la organización bajo licencia **AGPL v3**.
 
 ## Instalación (Modo Desarrollador)
 
-Para instalar **Straws Light** en Chrome durante su desarrollo:
+Para instalar **StrawsLite** en Chrome/Firefox durante su desarrollo:
 
-1.  Abre el navegador Chrome y ve a `chrome://extensions/`.
-2.  Activa el **Modo de desarrollador** (Developer mode) en la esquina superior derecha.
-3.  Haz clic en el botón **Cargar descomprimida** (Load unpacked).
-4.  Selecciona la carpeta raíz del proyecto `strawslite`.
-5.  Una vez cargada, puedes abrir el panel lateral de Straws Light haciendo clic en el icono de la extensión en la barra de herramientas.
+1.  Abre el navegador y ve a la página de extensiones (`chrome://extensions/` o `about:debugging`).
+2.  Activa el **Modo de desarrollador**.
+3.  Haz clic en **Cargar descomprimida** (o "Load Temporary Add-on")(proximamente en la store de firefox).
+4.  Selecciona la carpeta raíz del proyecto.
 
 ## Permisos Requeridos
 
-*   `declarativeNetRequest` / `declarativeNetRequestFeedback`: Para leer, bloquear o modificar de forma declarativa las peticiones de red.
-*   `storage`: Para guardar las reglas de redirección en el almacenamiento local del navegador.
-*   `sidePanel`: Para mostrar y gestionar la interfaz de usuario en el panel lateral del navegador.
-*   `webRequest`: Para interceptación adicional y compatibilidad (según sea necesario).
-*   `<all_urls>`: Permite a la extensión operar en cualquier página web para que las redirecciones funcionen correctamente en distintos orígenes.
+*   `nativeMessaging`: Para la comunicación de alta velocidad con el motor local.
+*   `declarativeNetRequest`: Para redirección de alto rendimiento.
+*   `proxy`: Para el despacho inteligente vía PAC.
+*   `storage`: Para persistencia local de reglas.
+
+---
+**Potencia de red profesional en tu entorno local.** 🚨🚀

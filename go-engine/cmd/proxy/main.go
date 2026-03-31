@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/kaber420/straws-core/pkg/nativeproto"
 	"github.com/kaber420/straws-core/pkg/proxy"
@@ -19,13 +20,32 @@ func main() {
 	exePath, _ := os.Executable()
 	exeDir := filepath.Dir(exePath)
 	
-	f, _ := os.OpenFile(filepath.Join(exeDir, "straws_native.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, _ := os.OpenFile("/tmp/straws_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	log.SetOutput(f)
-	log.Println("Straws Engine Main started")
+	log.Printf("--- Straws Engine Started at %v ---", filepath.Base(exePath))
 	
+	// Smart discovery of certs directory (Absolute)
+	absExeDir, _ := filepath.Abs(exeDir)
+	// Default to adjacent certs
+	certsDir := filepath.Join(absExeDir, "certs")
+	
+	// If it doesn't exist, OR if we are in a 'bin' folder, check parent
+	if strings.HasSuffix(absExeDir, "/bin") || strings.HasSuffix(absExeDir, "\\bin") {
+		parentCerts := filepath.Join(filepath.Dir(absExeDir), "certs")
+		if _, err := os.Stat(parentCerts); err == nil {
+			certsDir = parentCerts
+		}
+	} else if _, err := os.Stat(certsDir); os.IsNotExist(err) {
+		parentCerts := filepath.Join(filepath.Dir(absExeDir), "certs")
+		if _, err := os.Stat(parentCerts); err == nil {
+			certsDir = parentCerts
+		}
+	}
+	log.Printf("Final certsDir discovery: %s", certsDir)
+
 	registerFlag := flag.Bool("register", false, "Register the host in the browser's native messaging manifests")
 	portFlag := flag.String("port", "5782", "Port for the proxy server to listen on")
-	certsDirFlag := flag.String("certs-dir", filepath.Join(exeDir, "certs"), "Directory containing .crt and .key files for legal domains")
+	certsDirFlag := flag.String("certs-dir", certsDir, "Directory containing .crt and .key files for legal domains")
 	flag.Parse()
 
 	if *registerFlag {
@@ -37,6 +57,7 @@ func main() {
 		return
 	}
 
+	log.Printf("Starting engine with certs-dir: %s", *certsDirFlag)
 	run(*portFlag, *certsDirFlag)
 }
 
@@ -129,6 +150,7 @@ func run(port, certsDir string) {
 				log.Printf("Logging status changed to: %v", p.LoggingEnabled)
 			case "get_certs":
 				certs := p.GetAvailableCerts()
+				log.Printf("Extension requested certs. Found: %d", len(certs))
 				resp, _ := json.Marshal(map[string]interface{}{
 					"type":  "certs_list",
 					"certs": certs,

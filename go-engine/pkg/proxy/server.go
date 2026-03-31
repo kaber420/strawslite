@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"log"
@@ -41,16 +42,20 @@ func (p *ProxyServer) Start() error {
 }
 
 func (p *ProxyServer) LoadCertificates() error {
+	log.Printf("Scanning CertsDir: %s", p.CertsDir)
 	p.certificates = make(map[string]tls.Certificate)
 	if _, err := os.Stat(p.CertsDir); os.IsNotExist(err) {
+		log.Printf("CRITICAL: Certs directory not found: %s", p.CertsDir)
 		return os.MkdirAll(p.CertsDir, 0755)
 	}
-
+	
 	files, err := os.ReadDir(p.CertsDir)
 	if err != nil {
+		log.Printf("ERROR: Failed to read certs dir: %v", err)
 		return err
 	}
-
+	log.Printf("Found %d entries in certs dir", len(files))
+	
 	for _, f := range files {
 		if strings.HasSuffix(f.Name(), ".crt") {
 			base := strings.TrimSuffix(f.Name(), ".crt")
@@ -58,8 +63,22 @@ func (p *ProxyServer) LoadCertificates() error {
 			if _, err := os.Stat(keyPath); err == nil {
 				cert, err := tls.LoadX509KeyPair(filepath.Join(p.CertsDir, f.Name()), keyPath)
 				if err == nil {
+					// 1. Map by filename (stable default)
 					p.certificates[base] = cert
-					log.Printf("Loaded legal certificate for: %s", base)
+					
+					// 2. Try to parse SANs for better SNI support
+					leaf, err := x509.ParseCertificate(cert.Certificate[0])
+					if err == nil {
+						cert.Leaf = leaf
+						for _, dnsName := range leaf.DNSNames {
+							p.certificates[dnsName] = cert
+						}
+						log.Printf("Loaded cert [%s] for dns: %v", base, leaf.DNSNames)
+					} else {
+						log.Printf("Loaded cert [%s] (no SAN parsing)", base)
+					}
+				} else {
+					log.Printf("Error loading keypair for %s: %v", base, err)
 				}
 			}
 		}
@@ -67,16 +86,34 @@ func (p *ProxyServer) LoadCertificates() error {
 	return nil
 }
 
+func matchWildcard(pattern, host string) bool {
+	if !strings.Contains(pattern, "*") {
+		return pattern == host
+	}
+	parts := strings.Split(pattern, "*")
+	if len(parts) != 2 {
+		return false
+	}
+	return strings.HasPrefix(host, parts[0]) && strings.HasSuffix(host, parts[1])
+}
+
 func (p *ProxyServer) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	// 1. Direct match (Fast)
 	if cert, ok := p.certificates[hello.ServerName]; ok {
-		if p.OnEvent != nil {
-			p.OnEvent(map[string]interface{}{
-				"type":    "tls_match",
-				"host":    hello.ServerName,
-				"success": true,
-			})
-		}
+		p.logTLSMatch(hello.ServerName)
 		return &cert, nil
+	}
+	
+	// 2. Wildcard match (check all loaded certs)
+	for _, cert := range p.certificates {
+		if cert.Leaf != nil {
+			for _, name := range cert.Leaf.DNSNames {
+				if matchWildcard(name, hello.ServerName) {
+					p.logTLSMatch(hello.ServerName)
+					return &cert, nil
+				}
+			}
+		}
 	}
 	
 	if p.OnEvent != nil {
@@ -87,14 +124,29 @@ func (p *ProxyServer) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certifica
 			"success": false,
 		})
 	}
-	// Fallback or error
 	return nil, fmt.Errorf("no certificate for %s", hello.ServerName)
+}
+
+func (p *ProxyServer) logTLSMatch(host string) {
+	if p.OnEvent != nil {
+		p.OnEvent(map[string]interface{}{
+			"type":    "tls_match",
+			"host":    host,
+			"success": true,
+		})
+	}
 }
 
 func (p *ProxyServer) GetAvailableCerts() []string {
 	var names []string
+	seen := make(map[string]bool)
 	for name := range p.certificates {
-		names = append(names, name)
+		// Clean up the list: only exported bases if they don't look like domain names?
+		// Better: just deduplicate everything for now but favor shorter names.
+		if !seen[name] {
+			names = append(names, name)
+			seen[name] = true
+		}
 	}
 	return names
 }

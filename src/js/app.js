@@ -108,7 +108,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     document.querySelectorAll('.edit-rule-btn').forEach(el => {
-      el.addEventListener('click', (e) => openModal(parseInt(e.currentTarget.dataset.id)));
+      el.addEventListener('click', (e) => {
+        const id = parseInt(e.currentTarget.dataset.id);
+        openModal(state.rules[id]);
+      });
     });
     
     document.querySelectorAll('.delete-rule-btn').forEach(el => {
@@ -155,6 +158,9 @@ document.addEventListener('DOMContentLoaded', () => {
     modalTitle.textContent = 'Add New Straw';
     certStatusBadge.classList.add('hidden');
     
+    // Fetch certs first to ensure dropdown is ready
+    await fetchAvailableCerts();
+
     // Set default mode
     const redirectRadio = document.getElementById('type-redirect');
     if (redirectRadio) redirectRadio.checked = true;
@@ -172,12 +178,12 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleRuleType(rule.type);
       }
       
-      if (rule.type === 'engine' && rule.certificate) {
-        ruleCertSelect.value = rule.certificate;
+      if (rule.type === 'engine') {
+        const certValue = rule.certificate || rule.cert || '';
+        ruleCertSelect.value = certValue;
       }
     }
 
-    await fetchAvailableCerts();
     updateCertStatus();
     modal.classList.remove('hidden');
     setTimeout(() => ruleSourceInput.focus(), 50);
@@ -230,6 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateCertStatus() {
     const domain = ruleSourceInput.value.trim();
     const type = document.querySelector('input[name="rule-type"]:checked').value;
+    const selectedCert = ruleCertSelect.value;
     
     if (type !== 'engine' || !domain) {
       certStatusBadge.classList.add('hidden');
@@ -237,10 +244,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     certStatusBadge.classList.remove('hidden');
-    const match = state.availableCerts.includes(domain);
     
+    // Help function for wildcard match
+    const isMatch = (pattern, host) => {
+      if (!pattern || !host) return false;
+      if (!pattern.includes('*')) return pattern === host;
+      const parts = pattern.split('*');
+      if (parts.length !== 2) return false;
+      return host.startsWith(parts[0]) && host.endsWith(parts[1]);
+    };
+
+    if (!selectedCert) {
+      // Auto Mode: Check if ANY available cert matches the domain
+      const anyMatch = state.availableCerts.some(cert => isMatch(cert, domain));
+      if (anyMatch) {
+         certStatusBadge.textContent = 'Auto (SNI) Ready';
+         certStatusBadge.className = 'cert-status found';
+      } else {
+         certStatusBadge.textContent = 'Auto (No Match)';
+         certStatusBadge.className = 'cert-status missing';
+      }
+      return;
+    }
+
+    // Manual Mode
+    const match = state.availableCerts.includes(selectedCert);
     if (match) {
-      certStatusBadge.textContent = 'Cert Found';
+      certStatusBadge.textContent = 'Cert Locked';
       certStatusBadge.className = 'cert-status found';
     } else {
       certStatusBadge.textContent = 'Cert Missing';
@@ -312,6 +342,8 @@ document.addEventListener('DOMContentLoaded', () => {
     renderRules();
     closeModal();
   });
+
+  ruleCertSelect.addEventListener('change', updateCertStatus);
 
   // --- Logs Handling moved to monitor.js ---
   

@@ -140,11 +140,14 @@ func run(port, certsDir string) {
 		}
 		
 		var cmd struct {
-			Command string `json:"command"`
-			Enabled bool   `json:"enabled"`
+			Command string            `json:"command"`
+			Enabled bool              `json:"enabled"`
+			Rules   []proxy.ProxyRule `json:"rules"`
 		}
 		if err := json.Unmarshal(payload, &cmd); err == nil {
 			switch cmd.Command {
+			case "sync_rules":
+				p.UpdateRules(cmd.Rules)
 			case "set_logging":
 				p.LoggingEnabled = cmd.Enabled
 				log.Printf("Logging status changed to: %v", p.LoggingEnabled)

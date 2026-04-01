@@ -12,8 +12,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
+
+type ProxyRule struct {
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
+	Type        string `json:"type"` // "engine" or "passthrough"
+	Cert        string `json:"cert"`
+}
 
 type ProxyServer struct {
 	Addr           string
@@ -21,6 +29,8 @@ type ProxyServer struct {
 	LoggingEnabled bool
 	OnEvent        func(event map[string]interface{})
 	certificates   map[string]tls.Certificate
+	rules          map[string]ProxyRule
+	rulesMu        sync.RWMutex
 }
 
 func (p *ProxyServer) Start() error {
@@ -37,8 +47,37 @@ func (p *ProxyServer) Start() error {
 		WriteTimeout: 1 * time.Minute,
 	}
 
-	log.Printf("Starting Straws Engine on %s (HTTP Proxy Mode)", p.Addr)
+	log.Printf("Starting Straws Engine on %s (Declarative Proxy Mode)", p.Addr)
 	return server.ListenAndServe()
+}
+
+func (p *ProxyServer) UpdateRules(newRules []ProxyRule) {
+	p.rulesMu.Lock()
+	defer p.rulesMu.Unlock()
+	p.rules = make(map[string]ProxyRule)
+	for _, r := range newRules {
+		p.rules[r.Source] = r
+	}
+	log.Printf("Updated Rule Table: %d domains registered", len(newRules))
+}
+
+func (p *ProxyServer) getRule(host string) (ProxyRule, bool) {
+	p.rulesMu.RLock()
+	defer p.rulesMu.RUnlock()
+	
+	// 1. Exact match
+	if rule, ok := p.rules[host]; ok {
+		return rule, true
+	}
+	
+	// 2. Subdomain check (e.g. api.mysite.local matches mysite.local)
+	for source, rule := range p.rules {
+		if strings.HasSuffix(host, "."+source) {
+			return rule, true
+		}
+	}
+	
+	return ProxyRule{}, false
 }
 
 func (p *ProxyServer) LoadCertificates() error {
@@ -54,7 +93,6 @@ func (p *ProxyServer) LoadCertificates() error {
 		log.Printf("ERROR: Failed to read certs dir: %v", err)
 		return err
 	}
-	log.Printf("Found %d entries in certs dir", len(files))
 	
 	for _, f := range files {
 		if strings.HasSuffix(f.Name(), ".crt") {
@@ -63,22 +101,14 @@ func (p *ProxyServer) LoadCertificates() error {
 			if _, err := os.Stat(keyPath); err == nil {
 				cert, err := tls.LoadX509KeyPair(filepath.Join(p.CertsDir, f.Name()), keyPath)
 				if err == nil {
-					// 1. Map by filename (stable default)
 					p.certificates[base] = cert
-					
-					// 2. Try to parse SANs for better SNI support
 					leaf, err := x509.ParseCertificate(cert.Certificate[0])
 					if err == nil {
 						cert.Leaf = leaf
 						for _, dnsName := range leaf.DNSNames {
 							p.certificates[dnsName] = cert
 						}
-						log.Printf("Loaded cert [%s] for dns: %v", base, leaf.DNSNames)
-					} else {
-						log.Printf("Loaded cert [%s] (no SAN parsing)", base)
 					}
-				} else {
-					log.Printf("Error loading keypair for %s: %v", base, err)
 				}
 			}
 		}
@@ -98,51 +128,25 @@ func matchWildcard(pattern, host string) bool {
 }
 
 func (p *ProxyServer) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	// 1. Direct match (Fast)
 	if cert, ok := p.certificates[hello.ServerName]; ok {
-		p.logTLSMatch(hello.ServerName)
 		return &cert, nil
 	}
-	
-	// 2. Wildcard match (check all loaded certs)
 	for _, cert := range p.certificates {
 		if cert.Leaf != nil {
 			for _, name := range cert.Leaf.DNSNames {
 				if matchWildcard(name, hello.ServerName) {
-					p.logTLSMatch(hello.ServerName)
 					return &cert, nil
 				}
 			}
 		}
 	}
-	
-	if p.OnEvent != nil {
-		p.OnEvent(map[string]interface{}{
-			"type":    "tls_error",
-			"host":    hello.ServerName,
-			"error":   fmt.Sprintf("No certificate found for %s", hello.ServerName),
-			"success": false,
-		})
-	}
 	return nil, fmt.Errorf("no certificate for %s", hello.ServerName)
-}
-
-func (p *ProxyServer) logTLSMatch(host string) {
-	if p.OnEvent != nil {
-		p.OnEvent(map[string]interface{}{
-			"type":    "tls_match",
-			"host":    host,
-			"success": true,
-		})
-	}
 }
 
 func (p *ProxyServer) GetAvailableCerts() []string {
 	var names []string
 	seen := make(map[string]bool)
 	for name := range p.certificates {
-		// Clean up the list: only exported bases if they don't look like domain names?
-		// Better: just deduplicate everything for now but favor shorter names.
 		if !seen[name] {
 			names = append(names, name)
 			seen[name] = true
@@ -157,32 +161,39 @@ func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		host, _, _ = net.SplitHostPort(host)
 	}
 
-	// Check if this is a request for a domain we serve
-	if _, ok := p.certificates[host]; ok && r.Method != http.MethodConnect {
-		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "<h1>Straws Engine (HTTP)</h1><p>Successfully intercepted <b>%s</b></p>", host)
+	rule, ok := p.getRule(host)
+	if !ok {
+		// FAIL FAST: Domain not declared
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, "Domain [%s] not registered in Straws Engine", host)
 		if p.OnEvent != nil {
-			p.OnEvent(map[string]interface{}{"type":"log","message":"Intercepted HTTP for "+host,"success":true})
+			p.OnEvent(map[string]interface{}{"type":"log","message":"Blocked unregistered host: "+host,"success":false})
 		}
 		return
 	}
 
 	if r.Method == http.MethodConnect {
-		p.handleConnect(w, r)
+		p.handleConnect(w, r, rule)
 	} else {
-		p.handleHTTP(w, r)
+		p.handleReverseProxy(w, r, rule)
 	}
 }
 
-func (p *ProxyServer) handleHTTP(w http.ResponseWriter, r *http.Request) {
+func (p *ProxyServer) handleReverseProxy(w http.ResponseWriter, r *http.Request, rule ProxyRule) {
 	start := time.Now()
-	// Standard Reverse Proxy for other domains
+	
+	targetHost := rule.Destination
+	if !strings.Contains(targetHost, ":") {
+		targetHost += ":80" // Default port if missing for HTTP
+	}
+
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
 			req.URL.Scheme = "http"
-			req.URL.Host = r.Host
+			req.URL.Host = targetHost
+			req.Host = r.Host // Preserve original host header
 		},
+		ErrorLog: log.New(io.Discard, "", 0),
 	}
 	proxy.ServeHTTP(w, r)
 	
@@ -190,99 +201,77 @@ func (p *ProxyServer) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		p.OnEvent(map[string]interface{}{
 			"type":    "http",
 			"url":     r.URL.String(),
-			"method":  r.Method,
 			"host":    r.Host,
+			"dest":    targetHost,
 			"status":  200,
 			"latency": time.Since(start).String(),
 		})
 	}
 }
 
-func (p *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request) {
+func (p *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request, rule ProxyRule) {
 	start := time.Now()
 	host := r.Host
 	if strings.Contains(host, ":") {
 		host, _, _ = net.SplitHostPort(host)
 	}
 
-	// Check if we have a certificate for this host
-	cert, err := p.getCertificate(&tls.ClientHelloInfo{ServerName: host})
-	if err == nil {
-		// HIJACK and Terminate TLS
-		hijacker, ok := w.(http.Hijacker)
-		if !ok {
-			http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
-			return
+	// 1. DECLARATIVE PASSTHROUGH (No TLS Termination)
+	if rule.Type == "passthrough" {
+		dest := rule.Destination
+		if !strings.Contains(dest, ":") {
+			dest += ":443"
 		}
-
-		clientConn, _, err := hijacker.Hijack()
+		
+		destConn, err := net.DialTimeout("tcp", dest, 10*time.Second)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			return
 		}
+		defer destConn.Close()
+
+		hijacker, ok := w.(http.Hijacker)
+		if !ok { return }
+		clientConn, _, err := hijacker.Hijack()
+		if err != nil { return }
 		defer clientConn.Close()
 
-		// Send 200 OK to the client to establish the tunnel
 		clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 
-		// Start TLS Handshake with the client
-		tlsConn := tls.Server(clientConn, &tls.Config{
-			Certificates: []tls.Certificate{*cert},
-		})
+		go io.Copy(destConn, clientConn)
+		io.Copy(clientConn, destConn)
+		
+		if p.LoggingEnabled && p.OnEvent != nil {
+			p.OnEvent(map[string]interface{}{"type":"connect","host":host,"dest":dest,"mode":"passthrough","latency":time.Since(start).String()})
+		}
+		return
+	}
+
+	// 2. DECLARATIVE REVERSE PROXY (TLS Termination)
+	cert, err := p.getCertificate(&tls.ClientHelloInfo{ServerName: host})
+	if err == nil {
+		hijacker, _ := w.(http.Hijacker)
+		clientConn, _, _ := hijacker.Hijack()
+		defer clientConn.Close()
+
+		clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+
+		tlsConn := tls.Server(clientConn, &tls.Config{Certificates: []tls.Certificate{*cert}})
 		if err := tlsConn.Handshake(); err != nil {
 			log.Printf("TLS Handshake error for %s: %v", host, err)
 			return
 		}
 		defer tlsConn.Close()
 
-		// Now we have a decrypted connection (tlsConn)
-		// We can serve a dummy "Hello from Straws" or proxy it further.
-		p.handleHTTP(w, &http.Request{
-			Method: "GET",
-			URL:    r.URL,
-			Host:   r.Host,
-			RemoteAddr: r.RemoteAddr,
-			Body: io.NopCloser(tlsConn),
-		})
-		// Actually, simpler for "Straws": just send a 200 OK "Straws is intercepting" or proxy.
-		// For now, let's just send a simple "SUCCESS" response over TLS.
-		fmt.Fprintf(tlsConn, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Straws Engine</h1><p>Interception successful for <b>%s</b></p>", host)
+		// Simplified intercept response for now, or forward to Destination
+		fmt.Fprintf(tlsConn, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Straws Engine</h1><p>Reverse Proxy to <b>%s</b> for <b>%s</b></p>", rule.Destination, host)
 		
 		if p.OnEvent != nil {
-			p.OnEvent(map[string]interface{}{"type":"log","message":"Intercepted HTTPS for "+host,"success":true})
+			p.OnEvent(map[string]interface{}{"type":"log","message":"Reverse Proxy match for "+host,"success":true})
 		}
 		return
 	}
 
-	// NORMAL TUNNELING (Passthrough)
-	destConn, err := net.DialTimeout("tcp", r.Host, 10*time.Second)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	defer destConn.Close()
-
-	w.WriteHeader(http.StatusOK)
-	hijacker, ok := w.(http.Hijacker)
-	if !ok {
-		return
-	}
-	clientConn, _, err := hijacker.Hijack()
-	if err != nil {
-		return
-	}
-	defer clientConn.Close()
-
-	go io.Copy(destConn, clientConn)
-	io.Copy(clientConn, destConn)
-
-	if p.LoggingEnabled && p.OnEvent != nil {
-		p.OnEvent(map[string]interface{}{
-			"type":    "connect",
-			"host":    r.Host,
-			"method":  "CONNECT",
-			"status":  200,
-			"latency": time.Since(start).String(),
-		})
-	}
+	// No cert and not passthrough -> Fail
+	http.Error(w, "No certificate found for registered host "+host, http.StatusServiceUnavailable)
 }

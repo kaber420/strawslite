@@ -89,20 +89,33 @@ async function syncRules() {
     }
   }
 
-  if (addRules.length > 0 || removeRuleIds.length > 0) {
-    try {
-      await browser.declarativeNetRequest.updateDynamicRules({
-        removeRuleIds,
-        addRules
-      });
-      console.log(`DNR Sync complete. Added: ${addRules.length}, Removed: ${removeRuleIds.length}`);
-    } catch (e) {
-      console.error("Error updating DNR rules:", e);
-    }
-  }
-
   // Update Proxy Settings (Phase 3)
   await updateProxySettings(rulesObj, masterSwitch);
+  
+  // Sync rules to Engine (Phase 4)
+  if (bgState.isEngineActive) {
+    syncRulesToEngine(rulesObj, masterSwitch);
+  }
+}
+
+async function syncRulesToEngine(rulesObj, masterSwitch) {
+  const port = getNativePort();
+  if (!port) return;
+
+  const engineRules = Object.values(rulesObj)
+    .filter(r => r.active && masterSwitch && (r.type === 'engine' || r.type === 'passthrough'))
+    .map(r => ({
+      source: r.source,
+      destination: r.destination,
+      type: r.type,
+      cert: r.cert || ''
+    }));
+
+  console.log("Syncing rules to engine:", engineRules);
+  port.postMessage({
+    command: "sync_rules",
+    rules: engineRules
+  });
 }
 
 // --- PROXY IMPLEMENTATION ---
@@ -160,7 +173,7 @@ async function updateProxySettings(rulesObj, masterSwitch) {
   bgState.masterSwitch = masterSwitch;
 
   const proxyRules = Object.values(rulesObj).filter(r => 
-    r.active && r.source && r.destination && masterSwitch && (r.type === 'proxy' || r.type === 'engine')
+    r.active && r.source && r.destination && masterSwitch && r.type === 'engine'
   );
 
   const isFirefox = typeof browser.proxy.onRequest !== 'undefined';
@@ -200,21 +213,7 @@ async function updateProxySettings(rulesObj, masterSwitch) {
 
 function generatePACScript(rules) {
   const cases = rules.map(rule => {
-    let host = '127.0.0.1';
-    let port = '80';
-    const cleanDest = rule.destination.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-    
-    if (cleanDest.includes(':')) {
-      const parts = cleanDest.split(':');
-      host = parts[0] || '127.0.0.1';
-      port = parts[1].replace(/\D/g, '');
-    } else if (/^\d+$/.test(cleanDest)) {
-      port = cleanDest;
-    } else {
-      host = cleanDest;
-    }
-
-    return `if (shExpMatch(host, "${rule.source}")) return "PROXY ${host}:${port}";`;
+    return `if (shExpMatch(host, "${rule.source}")) return "PROXY 127.0.0.1:5782";`;
   }).join('\n    ');
 
   return `
@@ -229,33 +228,12 @@ function generatePACScript(rules) {
 function handleFirefoxProxy(requestInfo) {
   if (!bgState.masterSwitch) return { type: "direct" };
 
-  const rules = Object.values(bgState.rules).filter(r => 
-    r.active && (r.type === 'proxy' || r.type === 'engine')
-  );
-
   const url = new URL(requestInfo.url);
+  const rules = Object.values(bgState.rules).filter(r => r.active && r.type === 'engine');
   const matchingRule = rules.find(r => url.hostname === r.source || url.hostname.endsWith('.' + r.source));
 
   if (matchingRule) {
-    let host = '127.0.0.1';
-    let port = 80;
-    const cleanDest = matchingRule.destination.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-
-    if (cleanDest.includes(':')) {
-      const parts = cleanDest.split(':');
-      host = parts[0] || '127.0.0.1';
-      port = parseInt(parts[1].replace(/\D/g, ''), 10);
-    } else if (/^\d+$/.test(cleanDest)) {
-      port = parseInt(cleanDest, 10);
-    } else {
-      host = cleanDest;
-    }
-
-    if (matchingRule.type === 'engine') {
-      return { type: "http", host: "127.0.0.1", port: 5782 };
-    }
-
-    return { type: "http", host, port };
+    return { type: "http", host: "127.0.0.1", port: 5782 };
   }
 
   return { type: "direct" };

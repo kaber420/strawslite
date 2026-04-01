@@ -39,11 +39,12 @@ document.addEventListener('DOMContentLoaded', () => {
     state.masterSwitch = (data.masterSwitch !== false); // Default to true
     state.isEngineActive = !!data.isEngineActive;
     
-    // Migration: Ensure all rules have a type
+    // Migration: Ensure all rules have a valid type
     let migrated = false;
     Object.keys(state.rules).forEach(id => {
-      if (!state.rules[id].type) {
-        state.rules[id].type = 'redirect';
+      const type = state.rules[id].type;
+      if (!type || type === 'proxy') {
+        state.rules[id].type = (type === 'proxy') ? 'engine' : 'redirect';
         migrated = true;
       }
     });
@@ -84,8 +85,8 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="rule-info">
           <div class="rule-source" title="${escapeHtml(rule.source)}">
             ${escapeHtml(rule.source)}
-            <span class="rule-type-badge badge-${rule.type === 'engine' ? 'engine' : (rule.type === 'proxy' ? 'proxy' : 'redirect')}">
-              ${rule.type === 'engine' ? 'Straws Engine' : (rule.type === 'proxy' ? 'Standard Proxy' : 'DNR Redirect')}
+            <span class="rule-type-badge badge-${rule.type === 'engine' ? 'engine' : (rule.type === 'passthrough' ? 'passthrough' : 'redirect')}">
+              ${rule.type === 'engine' ? 'Straws Engine' : (rule.type === 'passthrough' ? 'Passthrough' : 'DNR Redirect')}
             </span>
           </div>
           <div class="rule-dest">${escapeHtml(rule.destination)}</div>

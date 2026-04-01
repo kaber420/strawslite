@@ -1,30 +1,20 @@
 {
-  "name": "strawslite",
-  "version": "1.0.0",
-  "description": "Herramienta de redirección web ultraligera y segura, sin dependencias externas.",
-  "type": "module",
-  "scripts": {
-    "dev:chrome": "VITE_BROWSER=chrome vite",
-    "dev:firefox": "VITE_BROWSER=firefox vite",
-    "build:chrome": "VITE_BROWSER=chrome vite build",
-    "build:firefox": "VITE_BROWSER=firefox vite build",
-    "test": "node tests/firefox-e2e.test.cjs",
-    "test:firefox": "node tests/firefox-e2e.test.cjs",
-    "test:chrome": "node tests/chrome-e2e.test.js"
-  },
-  "keywords": [
-    "chrome-extension",
-    "firefox-extension",
-    "redirect",
-    "proxy"
+  "name": "straws-monorepo",
+  "private": true,
+  "workspaces": [
+    "strawslite",
+    "straws"
   ],
-  "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "@types/webextension-polyfill": "^0.10.7",
-    "puppeteer": "^24.40.0",
-    "vite": "^6.2.0",
-    "vite-plugin-web-extension": "^4.1.7",
-    "webextension-polyfill": "^0.12.0"
+  "scripts": {
+    "build:engine": "npm run build:engine -w strawslite",
+    "build:lite:firefox": "npm run build:firefox -w strawslite",
+    "build:lite:chrome": "npm run build:chrome -w strawslite",
+    "build:lite:all": "npm run build:lite:firefox && npm run build:lite:chrome",
+    "build:manual:firefox": "npm run build:firefox -w straws",
+    "build:manual:chrome": "npm run build:chrome -w straws",
+    "build:manual:all": "npm run build:manual:firefox && npm run build:manual:chrome",
+    "build:all": "npm run build:engine && npm run build:lite:all && npm run build:manual:all",
+    "test:lite": "npm test -w strawslite",
+    "test:manual": "npm test -w straws"
   }
 }

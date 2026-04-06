@@ -1,0 +1,38 @@
+Plan: Arquitectura de Red Mesh Segura (Straws-Mesh + Omni-Relay)
+Este plan define la evolución de Straws hacia un sistema distribuido plenamente integrado con el ecosistema Omnisuite, utilizando Certberus para la identidad y estableciendo túneles mTLS dinámicos entre nodos.
+
+Estrategia de Seguridad e Inspección
+Se implementan tres niveles de visibilidad y blindaje, eliminando el término "MITM" por conceptos más descriptivos:
+
+Inspección Profunda (Deep Inspection - DI): El motor descifra el tráfico para analizarlo, registrar el historial y aplicar reglas.
+Transporte Mesh (mTLS): El "tubo" seguro entre motores que utiliza certificados de Certberus.
+Cifrado de Carga (Payload Encryption): El nivel de seguridad de los datos dentro del tubo (HTTP o HTTPS).
+Modos de Conexión
+Local-Fast (Mism Navegador/PC): Transporte Mesh (mTLS) + Contenido Nativo (HTTP). Optimizado para velocidad sin perder el doble registro.
+Remote-Secure (PC $\leftrightarrow$ VPS): Transporte Mesh (mTLS) + Contenido Cifrado (HTTPS). Máxima seguridad para saltos por internet.
+Cambios Arquitectónicos Propuestos
+[Straws-Core (Go)]
+[NUEVO] 
+
+pkg/mesh/client.go
+Integración con la API de Certberus (POST /_certberus/issue) para obtener la identidad mTLS al arrancar.
+Manejo de tokens de servicio de Omnisuite.
+[NUEVO] 
+
+pkg/mesh/tunnel.go
+Implementación del servidor y cliente mTLS.
+Soporte para gRPC bidireccional para sincronización de métricas en vivo y reglas entre nodos.
+[MODIFY] 
+
+pkg/proxy/server.go
+Extensión del motor de reglas para soportar el tipo Relay.
+Lógica de forwarding:
+Direct: Salida a internet normal.
+Relay: Encapsulamiento en túnel Mesh hacia el siguiente nodo.
+[Dashboard / Extensiones]
+[MODIFY] [Métricas en Vivo]
+El Dashboard local podrá "suscribirse" a las métricas de nodos remotos vía gRPC, permitiendo ver el tráfico de un VPS directamente en la extensión local.
+Verificación del Plan
+Handshake Test: Verificación de que dos motores Straws se reconocen y confían entre sí mediante los certificados de Certberus.
+Cascading Log Test: Confirmar que una petición genera un log en el "Nodo Origen" y un log en el "Nodo Salida" (Relay) con la trazabilidad completa.
+Performance Test: Medir el overhead de la inspección doble vs el modo passthrough.
